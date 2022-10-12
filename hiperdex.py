@@ -18,9 +18,11 @@ args = p.parse_args()
 
 pd = requests.get(args.url, headers={'User-Agent': 'Mozilla/5.0'})
 parse = BeautifulSoup(pd.text, 'html.parser')
-title = parse.find('title').string.strip(' Manga Online Free - Manganato')
+title = parse.find('title').string.replace(' » Hiperdex', '')
 
-nextUrl = parse.find('ul', {'class': 'row-content-chapter'}).find_all('li')[0-args.pagenum].a.get('href')
+chd = requests.post(urljoin(args.url, 'ajax/chapters/'), headers={'User-Agent': 'Mozilla/5.0', 'referer': args.url})
+parse = BeautifulSoup(chd.text, 'html.parser')
+nextUrl = parse.find('ul', {'class': 'version-chap'}).find_all('li')[0-args.pagenum].a.get('href')
 
 def fetchImage(url: str):
     for i in range(5):
@@ -38,21 +40,18 @@ except OSError as e:
 while nextUrl is not None:
     errCnt = 0
     try:
-        with open(os.path.join(title, f'page{args.pagenum}.html'), "wb") as dstFile:
-            dstFile.write('<html>\n<head><style>\nimg {width: 300px; margin-bottom: -5px;}\n</style></head><body>\n'.encode())
+        with open(os.path.join(title, f'page{args.pagenum:03d}.html'), "wb") as dstFile:
+            dstFile.write('<html>\n<head><style>\nimg {width: 300px;}\n</style></head><body>\n'.encode())
             print(nextUrl)
             with requests.get(nextUrl, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
-                siw = parse.find('div', {'class':'container-chapter-reader'})
+                siw = parse.find('div', {'class':'reading-content'})
                 # We can use a with statement to ensure threads are cleaned up promptly
                 with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    imgTasks = [executor.submit(fetchImage, urljoin(nextUrl, img.get('src'))) for img in siw.find_all('img')]
+                    imgTasks = [executor.submit(fetchImage, urljoin(nextUrl, img.get('src'))) for img in siw.find_all('img', {'class': 'wp-manga-chapter-img'})]
                     for task in imgTasks:
                         dstFile.write(task.result().encode())
-                        
-                next = parse.find(name='a', attrs={'class':'navi-change-chapter-btn-next'})
-                if next:
-                    dstFile.write('''
+                dstFile.write('''
     <script>
     function checkKey(e) {
         e = e || window.event;
@@ -64,12 +63,14 @@ while nextUrl is not None:
     document.onkeydown = checkKey;
     </script>
     '''.encode())
-                    dstFile.write(f'<a id=\"nextLink\" href=\"page{args.pagenum+1}.html\">Next</a>\n<br/>\n'.encode())
+                next = parse.find(name='a', attrs={'class':'next_page'})
+                if next:
+                    dstFile.write(f'<a id=\"nextLink\" href=\"page{(args.pagenum+1):03d}.html\">Next</a>\n<br/>\n'.encode())
                     nextUrl = urljoin(nextUrl, next.get('href'))
                 else:
                     nextUrl = None
                 if args.pagenum > 1:
-                    dstFile.write(f'<a id=\"prevLink\" href=\"page{args.pagenum-1}.html\">Prev</a>\n<br/>\n'.encode())
+                    dstFile.write(f'<a id=\"prevLink\" href=\"page{(args.pagenum-1):03d}.html\">Prev</a>\n<br/>\n'.encode())
             dstFile.write('</body>\n</html>\n'.encode())
             args.pagenum += 1
             print('New Page', args.pagenum)
