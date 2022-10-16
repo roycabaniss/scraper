@@ -18,7 +18,7 @@ args = p.parse_args()
 
 pd = requests.get(args.url, headers={'User-Agent': 'Mozilla/5.0'})
 parse = BeautifulSoup(pd.text, 'html.parser')
-title = parse.find('title').string.strip(' Manga Online Free - Manganato')
+title = parse.find('title').string.replace(' Manga Online Free - Manganato', '')
 
 nextUrl = parse.find('ul', {'class': 'row-content-chapter'}).find_all('li')[0-args.pagenum].a.get('href')
 
@@ -38,8 +38,8 @@ except OSError as e:
 while nextUrl is not None:
     errCnt = 0
     try:
-        with open(os.path.join(title, f'page{args.pagenum}.html'), "wb") as dstFile:
-            dstFile.write('<html>\n<head><style>\nimg {width: 300px; margin-bottom: -5px;}\n</style></head><body>\n'.encode())
+        with open(os.path.join(title, f'page{args.pagenum:03d}.html'), "wb") as dstFile:
+            dstFile.write('<html>\n<head><style>\nimg {width: 50vh; display: block; max-width: 100%; margin: auto;}\n</style></head><body>\n'.encode())
             print(nextUrl)
             with requests.get(nextUrl, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
@@ -49,10 +49,7 @@ while nextUrl is not None:
                     imgTasks = [executor.submit(fetchImage, urljoin(nextUrl, img.get('src'))) for img in siw.find_all('img')]
                     for task in imgTasks:
                         dstFile.write(task.result().encode())
-                        
-                next = parse.find(name='a', attrs={'class':'navi-change-chapter-btn-next'})
-                if next:
-                    dstFile.write('''
+                dstFile.write('''
     <script>
     function checkKey(e) {
         e = e || window.event;
@@ -64,12 +61,14 @@ while nextUrl is not None:
     document.onkeydown = checkKey;
     </script>
     '''.encode())
-                    dstFile.write(f'<a id=\"nextLink\" href=\"page{args.pagenum+1}.html\">Next</a>\n<br/>\n'.encode())
+                next = parse.find(name='a', attrs={'class':'navi-change-chapter-btn-next'})
+                if next:
+                    dstFile.write(f'<a id=\"nextLink\" href=\"page{(args.pagenum+1):03d}.html\">Next</a>\n<br/>\n'.encode())
                     nextUrl = urljoin(nextUrl, next.get('href'))
                 else:
                     nextUrl = None
                 if args.pagenum > 1:
-                    dstFile.write(f'<a id=\"prevLink\" href=\"page{args.pagenum-1}.html\">Prev</a>\n<br/>\n'.encode())
+                    dstFile.write(f'<a id=\"prevLink\" href=\"page{(args.pagenum-1):03d}.html\">Prev</a>\n<br/>\n'.encode())
             dstFile.write('</body>\n</html>\n'.encode())
             args.pagenum += 1
             print('New Page', args.pagenum)

@@ -41,7 +41,7 @@ while nextUrl is not None:
     errCnt = 0
     try:
         with open(os.path.join(title, f'page{args.pagenum:03d}.html'), "wb") as dstFile:
-            dstFile.write('<html>\n<head><style>\nimg {width: 300px;}\n</style></head><body>\n'.encode())
+            dstFile.write('<html>\n<head><style>\nimg {width: 50vh; display: block; max-width: 100%; margin: auto;}\n</style></head><body>\n'.encode())
             print(nextUrl)
             with requests.get(nextUrl, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
