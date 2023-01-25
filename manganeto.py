@@ -32,7 +32,8 @@ nextUrl = parse.find('ul', {'class': 'row-content-chapter'}).find_all('li')[0-ar
 def fetchImage(url: str):
     for i in range(5):
         try:
-            with requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as response:
+            with requests.get(url, headers={'User-Agent': 'Mozilla/5.0', 'referer': 'https://readmanganato.com/'}) as response:
+                response.raise_for_status()
                 with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                     with Image.open(image_bytes) as img:
                         img.save(img_dst, format=img.format, quality=50, optimize=True)
