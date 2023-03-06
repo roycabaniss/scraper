@@ -45,7 +45,7 @@ def fetchImage(url: str):
                         img.save(img_dst, format=format, quality=20, optimize=True)
                         return (format, img_dst.getvalue())
         except Exception as err:
-            logging.error(err)
+            logger.error(err)
 
 try:
     os.makedirs(title)
@@ -57,7 +57,7 @@ while nextUrl is not None:
     try:
         with open(os.path.join(title, f'page{args.pagenum:03d}.cbr'), 'wb') as zipdst:
             with zipfile.ZipFile(zipdst, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as dstFile:
-                logging.info(nextUrl)
+                logger.info(nextUrl)
                 with requests.get(nextUrl, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                     parse = BeautifulSoup(pageDump.text, 'html.parser')
                     siw = parse.find('div', {'class':'container-chapter-reader'})
@@ -73,14 +73,14 @@ while nextUrl is not None:
                     else:
                         nextUrl = None
             args.pagenum += 1
-            logging.info(f'New Page {args.pagenum}')
+            logger.info(f'New Page {args.pagenum}')
             time.sleep(2)
     except Exception as err:
         errCnt += 1
-        logging.error(err)
+        logger.error(err)
         if errCnt > 5:
             exit(1)
         else:
-            logging.error('Retrying')
+            logger.error('Retrying')
     else:
         errCnt = 0
