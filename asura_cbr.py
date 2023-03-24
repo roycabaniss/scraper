@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
 p.add_argument('--verbose', '-v', action='count', default=0)
+p.add_argument('--start', type=int, default=0)
 args = p.parse_args()
 
 logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
@@ -53,8 +54,6 @@ except OSError as e:
         raise
 
 def downloadChapter(nextUrl: str, pagenum: int):
-    errCnt = 0
-    
     for _ in range(5):
         try:
             with open(os.path.join(title, f'chapter{pagenum:03d}.cbr'), 'wb') as zipdst:
@@ -70,16 +69,12 @@ def downloadChapter(nextUrl: str, pagenum: int):
                                 format, content = task.result()
                                 dstFile.writestr(f'{idx:03d}.{format}', content)
         except Exception as err:
-            errCnt += 1
             logger.error(err)
-            if errCnt > 5:
-                exit(1)
-            else:
-                logger.error('Retrying')
+            logger.error('Retrying')
         else:
             return
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-    for idx, url in enumerate([x.a.get('href') for x in parse.find('ul', {'class': 'clstyle'}).find_all('li')[::-1]]):
-        executor.submit(downloadChapter, url, idx)
+    for idx, url in enumerate([x.a.get('href') for x in parse.find('ul', {'class': 'clstyle'}).find_all('li')[::-1][args.start:]]):
+        executor.submit(downloadChapter, url, idx+args.start)
 
