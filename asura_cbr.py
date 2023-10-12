@@ -11,9 +11,6 @@ import concurrent.futures
 from PIL import Image
 import io
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
 import zipfile
 
 import argparse
