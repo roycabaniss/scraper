@@ -11,9 +11,6 @@ import concurrent.futures
 from PIL import Image
 import io
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
 from ebooklib import epub
 import tempfile
 
@@ -26,6 +23,8 @@ p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
 p.add_argument('--pagenum', type=int, default=1)
 p.add_argument('--verbose', '-v', action='count', default=0)
+p.add_argument('--start', type=int, default=0)
+p.add_argument('--end', type=int, default=-1)
 args = p.parse_args()
 logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
 
@@ -58,46 +57,37 @@ def fetchImage(url: str):
                 with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                     with Image.open(image_bytes) as img:
                         img.save(img_dst, format=img.format, quality=50, optimize=True)
-                        return f'<img src=\"data:image/{img.format};base64, {base64.b64encode(img_dst.getvalue()).decode()}\">\n'
+                        return f'data:image/{img.format};base64,{base64.b64encode(img_dst.getvalue()).decode()}'
         except Exception as err:
             logger.error(err)
 
-while nextUrl is not None:
-    errCnt = 0
-    try:
-        with requests.get(nextUrl, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
-            parse = BeautifulSoup(pageDump.text, 'html.parser')
-            chTitle = parse.find('div', {'class': 'fic-header'}).find('h1').text
-            c = epub.EpubHtml(title=chTitle, file_name=f'page{args.pagenum:03d}.html')
-            toc.append(c)
-            c.write(f'<h1>{chTitle}</h1>')
-            for chDiv in parse.find_all('div', {'class': 'chapter-content'}):
-                c.write(str(chDiv))
-            book.add_item(c)
-            book.spine.append(c)
-        
-            nextLinks = [x for x in parse.find_all(name='a') if 'Next' in x.text]
-            if nextLinks:
-                next=nextLinks[0]
-            args.pagenum += 1
-            if next:
-                try:
-                    nextUrl = urljoin(nextUrl, next.get('href'))
-                except:
-                    pass
-            else:
-                next = None
-            logger.info(f'New Page {args.pagenum}, next {nextUrl}')
+def downloadChapter(url, num):
+    for _ in range(5):
+        try:
+            with requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
+                logger.info(f'Downloading {url}')
+                parse = BeautifulSoup(pageDump.text, 'html.parser')
+                chTitle = parse.find('div', {'class': 'fic-header'}).find('h1').text
+                c = epub.EpubHtml(title=chTitle, file_name=f'page{num:03d}.html')
+                c.write(f'<h1>{chTitle}</h1>')
+                for chDiv in parse.find_all('div', {'class': 'chapter-content'}):
+                    for img in chDiv.find_all('img'):
+                        img['src'] = fetchImage(urljoin(url, img.get('src')))
+                    c.write(str(chDiv))
+                return c
+        except Exception as err:
+            logger.error(err)
             time.sleep(2)
-    except Exception as err:
-        errCnt += 1
-        logger.error(err)
-        if errCnt > 5:
-            exit(1)
-        else:
-            logger.error('Retrying')
-    else:
-        errCnt = 0
+
+chResults = []
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    for idx, url in enumerate([x.a.get('href') for x in parse.find('table', {'id': 'chapters'}).find_all('tr')[1+args.start:args.end]], args.start):
+        chResults.append(executor.submit(downloadChapter, urljoin(nextUrl, url), idx))
+for task in chResults:
+    ch = task.result()
+    toc.append(ch)
+    book.add_item(ch)
+    book.spine.append(ch)
 
 # add navigation files
 book.add_item(epub.EpubNcx())
