@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import requests
 from bs4 import BeautifulSoup
-import base64
 import time
 import os
 import errno
@@ -11,9 +10,6 @@ import concurrent.futures
 from PIL import Image
 import io
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
 import zipfile
 
 import argparse
@@ -61,7 +57,7 @@ def downloadChapter(nextUrl: str, pagenum: int):
                         parse = BeautifulSoup(pageDump.text, 'html.parser')
                         siw = parse.find('div', {'class':'container-chapter-reader'})
                         # We can use a with statement to ensure threads are cleaned up promptly
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
                             imgTasks = [executor.submit(fetchImage, urljoin(nextUrl, img.get('src'))) for img in siw.find_all('img')]
                             for idx, task in enumerate(imgTasks):
                                 format, content = task.result()
@@ -69,10 +65,11 @@ def downloadChapter(nextUrl: str, pagenum: int):
         except Exception as err:
             logger.error(err)
             logger.error('Retrying')
+            time.sleep(2)
         else:
             return
 
-with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
     for idx, url in enumerate([x.a.get('href') for x in parse.find('ul', {'class': 'row-content-chapter'}).find_all('li')[::-1][args.start:]], args.start):
         executor.submit(downloadChapter, url, idx)
 
