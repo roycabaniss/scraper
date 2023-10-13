@@ -106,7 +106,7 @@ def writeToCbr():
                 writeQueue.task_done()
 threading.Thread(target=writeToCbr).start()
     
-with concurrent.futures.ThreadPoolExecutor() as executor:    
+with concurrent.futures.ThreadPoolExecutor() as executor:
     while nextUrl is not None:
         page = session.get(nextUrl)
         soup = BeautifulSoup(page.text, 'html.parser')
