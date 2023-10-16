@@ -13,6 +13,7 @@ import concurrent.futures
 import io
 import time
 from PIL import Image
+import traceback
 
 p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
@@ -39,9 +40,17 @@ Finished = "This task is finished. No, really."
 
 def fetchImage(imgUrl):
     logger.debug(f'fetchImage {imgUrl}')
-    response = requests.get(imgUrl)
-    response.raise_for_status()
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/118.0',
+        'Accept': 'image/avif,image/webp,*/*',
+        'Accept-Language': 'en-US,en;q=0.5',
+        # 'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://manhuaus.com/',
+    }
+    
     for _ in range(5):
+        response = requests.get(imgUrl, headers=headers)
+        response.raise_for_status()
         try:
             with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                 with Image.open(image_bytes) as img:
@@ -51,8 +60,10 @@ def fetchImage(imgUrl):
                     return (format, img_dst.getvalue())
         except Exception as err:
             logger.error(f'fetchImage({imgUrl} failed)')
+            traceback.print_exception(err)
             logger.error(err)
             time.sleep(2)
+    raise Exception(f"Failed to fetch {imgUrl}")
         
 
 def writeToCbr(writeQueue, path):
@@ -65,24 +76,27 @@ def writeToCbr(writeQueue, path):
                 if task == Finished:
                     writeQueue.task_done()
                     return
-                format, content = task.result()
-                logger.info(f"writing {imgNum}")
-                dstFile.writestr(f'{imgNum:03d}.{format}', content)
-                imgNum += 1
+                try:
+                    format, content = task.result()
+                    logger.info(f"writing {imgNum}")
+                    dstFile.writestr(f'{imgNum:03d}.{format}', content)
+                    imgNum += 1
+                except Exception as err:
+                    logger.error(err)
                 writeQueue.task_done()
 
-def downloadChapter(url, num):
-    logger.debug(f'downloadChapter({url}, {num})')
-    writeQueue = queue.Queue(maxsize=8)
-    threading.Thread(target=writeToCbr, args=(writeQueue, os.path.join(title, f'chapter_{num:03d}.cbr'),)).start()
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
+    def downloadChapter(url, num):
+        logger.debug(f'downloadChapter({url}, {num})')
+        writeQueue = queue.Queue(maxsize=8)
+        threading.Thread(target=writeToCbr, args=(writeQueue, os.path.join(title, f'chapter_{num:03d}.cbr'),)).start()
         with requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
             parse = BeautifulSoup(pageDump.text, 'html.parser')
             siw = parse.find('div', {'class':'reading-content'})
             for img in siw.find_all('img'):
-                writeQueue.put(executor.submit(fetchImage, (img.get('data-src') or img.get('src')).strip()))
+                writeQueue.put(downloadExecutor.submit(fetchImage, (img.get('data-src') or img.get('src')).strip()))
             writeQueue.put(Finished)
 
-with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-    for num, chapterUrl in enumerate([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1]], start=args.pagenum):
-        executor.submit(downloadChapter, chapterUrl, num)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        for num, chapterUrl in enumerate([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1]], start=args.pagenum):
+            executor.submit(downloadChapter, chapterUrl, num)
