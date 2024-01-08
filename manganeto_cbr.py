@@ -31,7 +31,7 @@ logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
 
 pd = requests.get(args.url, headers={'User-Agent': 'Mozilla/5.0'})
 parse = BeautifulSoup(pd.text, 'html.parser')
-title = parse.find('title').string.replace(' Manga Online Free - Manganato', '')
+title = parse.find('title').string.replace(' Manga Online Free - Manganato', '').replace('Manga Online Free - Manganato', '')
 try:
     os.makedirs(title)
 except OSError as e:
@@ -46,7 +46,7 @@ def fetchImage(imgUrl):
         'Accept': 'image/avif,image/webp,*/*',
         'Accept-Language': 'en-US,en;q=0.5',
         # 'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://manganeto.com/',
+        'Referer': 'https://chapmanganato.com/',
     }
     
     for _ in range(5):
