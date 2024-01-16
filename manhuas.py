@@ -17,9 +17,8 @@ import traceback
 
 p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
-p.add_argument('--pagenum', type=int, default=1)
 p.add_argument('--start', type=int, default=0)
-p.add_argument('--end', type=int, default=-1)
+p.add_argument('--end', type=int, default=4096)
 p.add_argument('--verbose', '-v', action='count', default=0)
 args = p.parse_args()
 
@@ -55,7 +54,6 @@ def fetchImage(imgUrl):
             with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                 with Image.open(image_bytes) as img:
                     format = {'jpg': 'JPEG', 'webp': 'JPEG'}.get(img.format.lower(), img.format)
-                    logger.debug(f'format {format}')
                     img.save(img_dst, format=format, quality=20, optimize=True)
                     return (format, img_dst.getvalue())
         except Exception as err:
@@ -67,7 +65,7 @@ def fetchImage(imgUrl):
         
 
 def writeToCbr(writeQueue, path):
-    logger.debug(f'writeToCbr(queue, {path})')
+    logger.debug(f'starting {path})')
     with open(path, 'wb') as zipdst:
         with zipfile.ZipFile(zipdst, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as dstFile:
             imgNum = 1
@@ -75,10 +73,11 @@ def writeToCbr(writeQueue, path):
                 task = writeQueue.get()
                 if task == Finished:
                     writeQueue.task_done()
+                    logger.debug(f'finished {path})')
                     return
                 try:
                     format, content = task.result()
-                    logger.info(f"writing {imgNum}")
+                    logger.debug(f"writing image {zipdst}::{imgNum}")
                     dstFile.writestr(f'{imgNum:03d}.{format}', content)
                     imgNum += 1
                 except Exception as err:
@@ -98,5 +97,5 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
             writeQueue.put(Finished)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        for num, chapterUrl in enumerate([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1]], start=args.pagenum):
+        for num, chapterUrl in enumerate([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1]][args.start:args.end+1], start=args.start):
             executor.submit(downloadChapter, chapterUrl, num)
