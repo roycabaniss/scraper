@@ -30,7 +30,7 @@ logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
 
 pd = requests.get(args.url, headers={'User-Agent': 'Mozilla/5.0'})
 parse = BeautifulSoup(pd.text, 'html.parser')
-title = parse.find('title').string.replace(' - MANHUAUS.COM', '')
+title = parse.find('title').string.replace(' - MANHUAUS.COM', '').replace('Manga Online Free - Manganelo', '').strip()
 try:
     os.makedirs(title)
 except OSError as e:
@@ -45,8 +45,17 @@ def fetchImage(imgUrl):
         'Accept': 'image/avif,image/webp,*/*',
         'Accept-Language': 'en-US,en;q=0.5',
         # 'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://manhuaus.com/',
+        'Referer': 'https://chapmanganelo.com/',
+    }   
+    '''        
+Host: v2.mkklcdnv6tempv2.com
+User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0
+Accept: image/avif,image/webp,*/*
+Accept-Language: en-US,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Referer: 
     }
+    '''
     
     for _ in range(5):
         response = requests.get(imgUrl, headers=headers)
@@ -92,7 +101,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
         for url in chunks:
             with requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
-                siw = parse.find('div', {'class':'reading-content'})
+                siw = parse.find('div', {'class':'container-chapter-reader'})
                 for img in siw.find_all('img'):
                     writeQueue.put(downloadExecutor.submit(fetchImage, (img.get('data-src') or img.get('src')).strip()))
         writeQueue.put(Finished)
@@ -103,8 +112,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         if args.volume > 1:
-            for volNum, volChunk in enumerate(chunk([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1][args.start:args.end+1]], args.volume), start=args.start):
+            for volNum, volChunk in enumerate(chunk([li.a.get('href') for li in parse.find('ul', {'id': 'row-content-chapter'}).find_all('li')[::-1][args.start:args.end+1]], args.volume), start=args.start):
                 executor.submit(downloadVolume, volChunk, f'volume_{volNum:03d}.cbr')
         else:
-            for volNum, item in enumerate([li for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1][args.start:args.end+1]], start=args.start):
+            for volNum, item in enumerate([li for li in parse.find('ul', {'id': 'row-content-chapter'}).find_all('li')[::-1][args.start:args.end+1]], start=args.start):
                 executor.submit(downloadVolume, [item.a.get('href')], f'chapter_{volNum:03d} - {item.a.text}.cbr')
