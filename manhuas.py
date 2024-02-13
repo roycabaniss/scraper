@@ -107,4 +107,4 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
                 executor.submit(downloadVolume, volChunk, f'volume_{volNum:03d}.cbr')
         else:
             for volNum, item in enumerate([li for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1][args.start:args.end+1]], start=args.start):
-                executor.submit(downloadVolume, [item.a.get('href')], f'chapter_{volNum:03d} - {item.a.text}.cbr')
+                executor.submit(downloadVolume, [item.a.get('href')], f'chapter_{volNum:03d} - {item.a.text.strip()}.cbr')

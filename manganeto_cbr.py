@@ -15,6 +15,7 @@ import time
 from PIL import Image
 import traceback
 from urllib.parse import urljoin
+import re
 
 p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
@@ -32,6 +33,7 @@ logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
 pd = requests.get(args.url, headers={'User-Agent': 'Mozilla/5.0'})
 parse = BeautifulSoup(pd.text, 'html.parser')
 title = parse.find('title').string.replace(' Manga Online Free - Manganato', '').replace('Manga Online Free - Manganato', '')
+title = re.sub("Read (.*) Manga on Mangakakalot *", "\\1", title)
 try:
     os.makedirs(title)
 except OSError as e:
