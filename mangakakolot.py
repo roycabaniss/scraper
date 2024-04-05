@@ -23,6 +23,7 @@ p.add_argument('--pagenum', type=int, default=1)
 p.add_argument('--start', type=int, default=0)
 p.add_argument('--end', type=int, default=-1)
 p.add_argument('--verbose', '-v', action='count', default=0)
+p.add_argument('--vscode', action='store_true')
 args = p.parse_args()
 
 logging.basicConfig()
@@ -31,8 +32,16 @@ logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
 
 requestHeader = {
     'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0',
-    'Cookie': '_ga_F0M71D6SNJ=GS1.1.1704769392.4.1.1704770324.0.0.0; _ga=GA1.1.1529098863.1696037227'
+    'Referer': 'https://mangakakalot.com/'
 }
+
+#GET /img/tab_33/04/77/92/vo999149/chapter_1/2-o.jpg HTTP/1.1
+#Host: v13.mkklcdnv6tempv4.com
+#User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0
+#Accept: image/avif,image/webp,*/*
+#Accept-Language: en-US,en;q=0.5
+#Accept-Encoding: gzip, deflate, br
+
 
 pd = requests.get(args.url, requestHeader)
 parse = BeautifulSoup(pd.text, 'html.parser')
@@ -85,7 +94,7 @@ def writeToCbr(writeQueue, path):
                     logger.error(err)
                 writeQueue.task_done()
 
-with concurrent.futures.ThreadPoolExecutor() as downloadExecutor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=1 if args.vscode else None) as downloadExecutor:
     def downloadChapter(url, num):
         try:
             logger.debug(f'downloadChapter({url}, {num})')
@@ -93,7 +102,7 @@ with concurrent.futures.ThreadPoolExecutor() as downloadExecutor:
             threading.Thread(target=writeToCbr, args=(writeQueue, os.path.join(title, f'chapter_{num:03d}.cbr'),)).start()
             with requests.get(url, headers=requestHeader) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
-                siw = parse.find('div', {'class':'vung-doc'})
+                siw = parse.find('div', {'class':'container-chapter-reader'})
                 for img in siw.find_all('img'):
                     writeQueue.put(downloadExecutor.submit(fetchImage, (img.get('data-src') or img.get('src')).strip()))
                 writeQueue.put(Finished)
@@ -101,7 +110,7 @@ with concurrent.futures.ThreadPoolExecutor() as downloadExecutor:
             logger.error(err)
             traceback.print_exception(err)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1 if args.vscode else None) as executor:
         aList = [urljoin(args.url, a.get('href')) for a in parse.find('div', {'class': 'chapter-list'}).findAll('a')[::-1]]
         if args.end > 0:
             aList = aList[args.start:args.end]
