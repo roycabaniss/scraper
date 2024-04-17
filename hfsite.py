@@ -9,6 +9,7 @@ from PIL import Image
 import argparse
 import queue
 import threading
+from pictures import addTitle, addCaption
 
 import logging
 logging.basicConfig()
@@ -21,6 +22,8 @@ p.add_argument('userName', default='slaveryartwork')
 p.add_argument('--num', type=int, default=1)
 p.add_argument('--verbose', '-v', action='count', default=0)
 p.add_argument('--nodl', action="store_true")
+p.add_argument('--caption', action="store_true")
+p.add_argument('--vscode', action='store_true')
 args = p.parse_args()
 userName = args.userName
 logger.setLevel(max(logging.WARN - args.verbose * 10, 1))
@@ -79,7 +82,15 @@ def fetch(link, session: requests.Session):
                 response.raise_for_status()
                 with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                     with Image.open(image_bytes) as img:
+                        title=imgSoup.find(name='h1', attrs={'class': 'titleSemantic'}).text
                         format = {}.get(img.format.lower(), img.format)
+                        if title:
+                            img = addTitle(img, title=title)
+                        if args.caption:
+                            caption = title=imgSoup.find(name='div', attrs={'class': 'picDescript'}).text.strip()
+                            if caption:
+                                img = addCaption(img, caption)
+                        img = img.resize((int(img.width * (900 / img.height)) , 900))
                         img.save(img_dst, format=format, quality=20, optimize=True)
                         return (format, img_dst.getvalue())
         except Exception as err:
@@ -106,7 +117,7 @@ def writeToCbr():
                 writeQueue.task_done()
 threading.Thread(target=writeToCbr).start()
     
-with concurrent.futures.ThreadPoolExecutor() as executor:
+with concurrent.futures.ThreadPoolExecutor(max_workers=1 if args.vscode else None) as executor:
     while nextUrl is not None:
         page = session.get(nextUrl)
         soup = BeautifulSoup(page.text, 'html.parser')
@@ -119,6 +130,8 @@ with concurrent.futures.ThreadPoolExecutor() as executor:
         if nextSoup and nextSoup != nextUrl and nextUrl != baseUrl + "/" + nextSoup.get('href'):
             nextUrl = baseUrl + '/' + nextSoup.get('href')
         else:
+            nextUrl = None
+        if args.vscode:
             nextUrl = None
 writeQueue.put(Finished)
 print("writeQ join")
