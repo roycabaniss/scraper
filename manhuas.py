@@ -14,14 +14,18 @@ import io
 import time
 from PIL import Image
 import traceback
+from urllib.parse import urljoin, urlparse
 
 p = argparse.ArgumentParser()
 p.add_argument('url', type=str)
 p.add_argument('--start', type=int, default=0)
 p.add_argument('--end', type=int, default=4096)
+p.add_argument('--debug', action='store_true')
 p.add_argument('--verbose', '-v', action='count', default=0)
 p.add_argument('--volume', type=int, default=1)
 args = p.parse_args()
+
+server = urlparse(args.url)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -54,9 +58,18 @@ def fetchImage(imgUrl):
         try:
             with io.BytesIO(response.content) as image_bytes, io.BytesIO() as img_dst:
                 with Image.open(image_bytes) as img:
-                    format = {'jpg': 'JPEG', 'webp': 'JPEG'}.get(img.format.lower(), img.format)
-                    img.save(img_dst, format=format, quality=20, optimize=True)
-                    return (format, img_dst.getvalue())
+                    try:
+                        imgFormat = imgUrl.split('.')[-1].lower()
+                        format = {'jpg': 'JPEG', 'webp': 'JPEG'}.get(imgFormat, imgFormat)
+                        img.save(img_dst, format=format, quality=20, optimize=True)
+                        return (format, img_dst.getvalue())
+                    except OSError as e:
+                        if 'cannot write mode RGBA' in e.args[0]:
+                            img = img.convert('RGB')
+                            img.save(img_dst, format=format, quality=20, optimize=True)
+                            return (format, img_dst.getvalue())
+                        else:
+                            raise e
         except Exception as err:
             logger.error(f'fetchImage({imgUrl} failed)')
             traceback.print_exception(err)
@@ -92,19 +105,19 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=8) as downloadExecutor:
         for url in chunks:
             with requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}) as pageDump:
                 parse = BeautifulSoup(pageDump.text, 'html.parser')
-                siw = parse.find('div', {'class':'reading-content'})
+                siw = parse.find('div', {'id':'content'})
                 for img in siw.find_all('img'):
-                    writeQueue.put(downloadExecutor.submit(fetchImage, (img.get('data-src') or img.get('src')).strip()))
+                    writeQueue.put(downloadExecutor.submit(fetchImage, urljoin(f'{server.scheme}://{server.netloc}', (img.get('data-src') or img.get('src')).strip())))
         writeQueue.put(Finished)
             
     def chunk(arr, chunksize):
         for a in range(0, len(arr), chunksize):
             yield arr[a:a+chunksize]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1 if args.debug else None) as executor:
         if args.volume > 1:
-            for volNum, volChunk in enumerate(chunk([li.a.get('href') for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1][args.start:args.end+1]], args.volume), start=args.start):
+            for volNum, volChunk in enumerate(chunk([li.a.get('href') for li in parse.find('ul', {'class': 'clstyle'}).find_all('li')[::-1][args.start:args.end+1]], args.volume), start=args.start):
                 executor.submit(downloadVolume, volChunk, f'volume_{volNum:03d}.cbr')
         else:
-            for volNum, item in enumerate([li for li in parse.find('ul', {'class': 'version-chap'}).find_all('li')[::-1][args.start:args.end+1]], start=args.start):
-                executor.submit(downloadVolume, [item.a.get('href')], f'chapter_{volNum:03d} - {item.a.text.strip()}.cbr')
+            for volNum, item in enumerate([li for li in parse.find('ul', {'class': 'clstyle'}).find_all('li')[::-1][args.start:args.end+1]], start=args.start):
+                executor.submit(downloadVolume, [item.a.get('href')], f'chapter_{volNum:03d} - {item.a.find("span", {"class": "chapternum"}).text.strip()}.cbr')
